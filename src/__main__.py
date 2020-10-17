@@ -1,2 +1,2 @@
-from .manuf import main
+from .macfinder import main
 main()

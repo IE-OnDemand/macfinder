@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# This is manuf with a simple modification to allow reverse loopkup.
+# Please see "manuf" license below and included in LICENSE.txt.
 # manuf.py: Parser library for Wireshark's OUI database.
 # Copyright (c) 2019 Michael Huang
 #
@@ -10,12 +12,12 @@
 #
 # <http://www.gnu.org/licenses/>
 # <http://www.apache.org/licenses/>
-"""Parser library for Wireshark's OUI database.
+""" Parser library for Wireshark's OUI database.
 
-Converts MAC addresses into a manufacturer using Wireshark's OUI database.
+Converts MAC addresses into a manufacturer and manufacturer into MAC addresses
+using Wireshark's OUI database.
 
 See README.md.
-
 """
 from __future__ import print_function
 from collections import namedtuple
@@ -40,11 +42,12 @@ except ImportError:
 import importlib
 import os
 
-# Vendor tuple
-Vendor = namedtuple('Vendor', ['manuf', 'manuf_long', 'comment'])
+# Vendor tuple extended to hold MAC string for reverse lookup
+Vendor = namedtuple('Vendor', ['manuf', 'manuf_long', 'comment', 'mac'])
+
 
 class MacParser(object):
-    """Class that contains a parser for Wireshark's OUI database.
+    """ Class that contains a parser for Wireshark's OUI database.
 
     Optimized for quick lookup performance by reading the entire file into memory on
     initialization. Maps ranges of MAC addresses to manufacturers and comments (descriptions).
@@ -59,65 +62,33 @@ class MacParser(object):
 
     Raises:
         IOError: If manuf file could not be found.
-
     """
     MANUF_URL = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf"
     WFA_URL = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=wka"
 
-    def  __init__(self, manuf_name=None, update=False):
+    def  __init__(self, manuf_name=None, update=False, mac_separator=':'):
         self._manuf_name = manuf_name or self.get_packaged_manuf_file_path()
+        self._sep = mac_separator
         if update:
             self.update()
         else:
             self.refresh()
 
-    def refresh(self, manuf_name=None):
-        """Refresh/reload manuf database. Call this when manuf file is updated.
 
-        Args:
-            manuf_name (str): Location of the manuf data base file. Defaults to "manuf" in the
-                same directory.
+    @property
+    def separator(self):
+        return self._sep
 
-        Raises:
-            IOError: If manuf file could not be found.
 
+    @separator.setter
+    def separator(self, mac_separator=':'):
+        """ Injecting a "refresh" if the separator is modified
+        The nemedtuple DB is built during initialization so we must rebuild
         """
-        if not manuf_name:
-            manuf_name = self._manuf_name
-        with io.open(manuf_name, "r", encoding="utf-8") as read_file:
-            manuf_file = StringIO(read_file.read())
-        self._masks = {}
+        if not self._sep == mac_separator:
+            self._sep = mac_separator
+            self.refresh()
 
-        # Build mask -> result dict
-        for line in manuf_file:
-            try:
-                line = line.strip()
-                if not line or line[0] == "#":
-                    continue
-                line = line.replace("\t\t", "\t")
-                fields = [field.strip() for field in line.split("\t")]
-
-                parts = fields[0].split("/")
-                mac_str = self._strip_mac(parts[0])
-                mac_int = self._get_mac_int(mac_str)
-                mask = self._bits_left(mac_str)
-
-                # Specification includes mask
-                if len(parts) > 1:
-                    mask_spec = 48 - int(parts[1])
-                    if mask_spec > mask:
-                        mask = mask_spec
-
-                comment = fields[3].strip("#").strip() if len(fields) > 3 else None
-                long_name = fields[2] if len(fields) > 2 else None
-
-                self._masks[(mask, mac_int >> mask)] = Vendor(manuf=fields[1], manuf_long=long_name, comment=comment)
-            except:
-                print( "Couldn't parse line", line)
-                raise
-
-
-        manuf_file.close()
 
     def update(self, manuf_url=None, wfa_url=None, manuf_name=None, refresh=True):
         """Update the Wireshark OUI database to the latest version.
@@ -132,21 +103,18 @@ class MacParser(object):
 
         Raises:
             URLError: If the download fails
-
         """
         if not manuf_url:
             manuf_url = self.MANUF_URL
         if not manuf_name:
             manuf_name = self._manuf_name
-
         # Retrieve the new database
         try:
             response = urlopen(Request(manuf_url, headers={'User-Agent': 'Mozilla'}))
         except URLError:
             raise URLError("Failed downloading OUI database")
-
         # Parse the response
-        if response.code is 200:
+        if response.code == 200:
             with open(manuf_name, "wb") as write_file:
                 write_file.write(response.read())
             if refresh:
@@ -154,19 +122,16 @@ class MacParser(object):
         else:
             err = "{0} {1}".format(response.code, response.msg)
             raise URLError("Failed downloading database: {0}".format(err))
-
         response.close()
         if not wfa_url:
             wfa_url = self.WFA_URL
-
         # Append WFA to new database
         try:
             response = urlopen(Request(wfa_url, headers={'User-Agent': 'Mozilla'}))
         except URLError:
             raise URLError("Failed downloading WFA database")
-
         # Parse the response
-        if response.code is 200:
+        if response.code == 200:
             with open(manuf_name, "ab") as write_file:
                 write_file.write(response.read())
             if refresh:
@@ -174,8 +139,51 @@ class MacParser(object):
         else:
             err = "{0} {1}".format(response.code, response.msg)
             raise URLError("Failed downloading database: {0}".format(err))
-
         response.close()
+
+
+    def refresh(self, manuf_name=None):
+        """Refresh/reload manuf database. Call this when manuf file is updated.
+
+        Args:
+            manuf_name (str): Location of the manuf data base file. Defaults to "manuf" in the
+                              same directory.
+
+        Raises:
+            IOError: If manuf file could not be found.
+        """
+        if not manuf_name:
+            manuf_name = self._manuf_name
+        with io.open(manuf_name, "r", encoding="utf-8") as read_file:
+            manuf_file = StringIO(read_file.read())
+        self._masks = {}
+        # Build mask -> result dict
+        for line in manuf_file:
+            try:
+                line = line.strip()
+                if not line or line[0] == "#":
+                    continue
+                line = line.replace("\t\t", "\t")
+                fields = [field.strip() for field in line.split("\t")]
+                parts = fields[0].split("/")
+                mac_str = self._strip_mac(parts[0])
+                mac_int = self._get_mac_int(mac_str)
+                mask = self._bits_left(mac_str)
+                # Specification includes mask
+                if len(parts) > 1:
+                    mask_spec = 48 - int(parts[1])
+                    if mask_spec > mask:
+                        mask = mask_spec
+                mac = self._get_mac_str(mac_int, mask)
+                name = fields[1]
+                long_name = fields[2] if len(fields) > 2 else None
+                comment = fields[3].strip("#").strip() if len(fields) > 3 else None
+                self._masks[(mask, mac_int >> mask)] = Vendor(manuf=name, manuf_long=long_name, comment=comment, mac=mac)
+            except:
+                print( "Couldn't parse line", line)
+                raise
+        manuf_file.close()
+
 
     def search(self, mac, maximum=1):
         """Search for multiple Vendor tuples possibly matching a MAC address.
@@ -190,14 +198,12 @@ class MacParser(object):
 
         Raises:
             ValueError: If the MAC could not be parsed.
-
         """
         vendors = []
         if maximum <= 0:
             return vendors
         mac_str = self._strip_mac(mac)
         mac_int = self._get_mac_int(mac_str)
-
         # If the user only gave us X bits, check X bits. No partial matching!
         for mask in range(self._bits_left(mac_str), 48):
             result = self._masks.get((mask, mac_int >> mask))
@@ -207,8 +213,26 @@ class MacParser(object):
                     break
         return vendors
 
+
+    def search_name(self, name):
+        """Search for multiple Vendor tuples possibly matching a name.
+
+        Args:
+            name (str): Name for vendor. Will do "if name in vendor_name" match.
+
+        Returns:
+            List of MAC address tuples (mac, mask). Empty if no results found.
+        """
+        macs = []
+        for vendor in self._masks.values():
+            if (name in vendor.manuf) or \
+                (vendor.manuf_long and name in vendor.manuf_long):
+                macs.append(vendor.mac)
+        return macs
+
+
     def get_all(self, mac):
-        """Get a Vendor tuple containing (manuf, comment) from a MAC address.
+        """ Get a Vendor tuple containing (manuf, comment) from a MAC address.
 
         Args:
             mac (str): MAC address in standard format.
@@ -219,12 +243,12 @@ class MacParser(object):
 
         Raises:
             ValueError: If the MAC could not be parsed.
-
         """
         vendors = self.search(mac)
         if len(vendors) == 0:
             return Vendor(manuf=None, manuf_long=None, comment=None)
         return vendors[0]
+
 
     def get_manuf(self, mac):
         """Returns manufacturer from a MAC address.
@@ -237,9 +261,9 @@ class MacParser(object):
 
         Raises:
             ValueError: If the MAC could not be parsed.
-
         """
         return self.get_all(mac).manuf
+
 
     def get_manuf_long(self, mac):
         """Returns manufacturer long name from a MAC address.
@@ -252,9 +276,9 @@ class MacParser(object):
 
         Raises:
             ValueError: If the MAC could not be parsed.
-
         """
         return self.get_all(mac).manuf_long
+
 
     def get_comment(self, mac):
         """Returns comment from a MAC address.
@@ -267,9 +291,9 @@ class MacParser(object):
 
         Raises:
             ValueError: If the MAC could not be parsed.
-
         """
         return self.get_all(mac).comment
+
 
     # Gets the integer representation of a stripped mac string
     def _get_mac_int(self, mac_str):
@@ -279,23 +303,33 @@ class MacParser(object):
         except ValueError:
             raise ValueError("Could not parse MAC: {0}".format(mac_str))
 
-    # Regular expression that matches '-', ':', and '.' characters
-    _pattern = re.compile(r"[-:\.]")
+
+    # Gets the string representation of a formerly converted mac int
+    def _get_mac_str(self, mac_int, mask=None):
+        # Use simple string formating using f-strings with hex base 12 specifier
+        mac_hex = f"{mac_int:012x}"
+        num = 4 if self.separator == '.' else 2
+        mac_str = self.separator.join(
+            mac_hex[i:i+num] for i in range(0, len(mac_hex), num)
+        )
+        return f"{mac_str}/{mask}" if mask else mac_str
+
 
     # Strips the MAC address of '-', ':', and '.' characters
     def _strip_mac(self, mac):
-        return self._pattern.sub("", mac)
+        _pattern = re.compile(r"[-:\.]")
+        return _pattern.sub("", mac)
+
 
     # Gets the number of bits left in a mac string
     @staticmethod
     def _bits_left(mac_str):
         return 48 - 4 * len(mac_str)
 
+
     @staticmethod
     def get_packaged_manuf_file_path():
-        """
-        returns the path to manuf file bundled with the package.
-        :return:
+        """ Returns the path to manuf file bundled with the package.
         """
         if __package__ is None or __package__ == "":
             package_init_path = __file__
