@@ -69,6 +69,7 @@ class MacParser(object):
     def  __init__(self, manuf_name=None, update=False, mac_separator=':'):
         self._manuf_name = manuf_name or self.get_packaged_manuf_file_path()
         self._sep = mac_separator
+        self._num = 4 if self._sep == '.' else 2
         if update:
             self.update()
         else:
@@ -87,6 +88,7 @@ class MacParser(object):
         """
         if not self._sep == mac_separator:
             self._sep = mac_separator
+            self._num = 4 if self._sep == '.' else 2
             self.refresh()
 
 
@@ -231,6 +233,26 @@ class MacParser(object):
         return macs
 
 
+    def get_company_macs(self, name, use_wildcards=True):
+        """ Get a list of MAC addresses that contain the 'name' arg.
+
+        Args:
+            name (str): String to search for in Manufacturer name.
+                        Both short and long name is searched.
+            use_wildcards (bool): Replace mask zeros with '*'. Default is True
+
+        Returns:
+            macs: List of MACs with wildcards for mask (default).
+                  Or list of strings MAC/mask if use_wildcards=False.
+        """
+        macs = self.search_name(name)
+        if len(macs) == 0:
+            return []
+        if use_wildcards:
+            macs = [self._convert_mac_str_to_wild(mac) for mac in macs]
+        return macs
+
+
     def get_all(self, mac):
         """ Get a Vendor tuple containing (manuf, comment) from a MAC address.
 
@@ -309,10 +331,32 @@ class MacParser(object):
         # Use simple string formating using f-strings with hex base 12 specifier
         mac_hex = f"{mac_int:012x}"
         num = 4 if self.separator == '.' else 2
-        mac_str = self.separator.join(
-            mac_hex[i:i+num] for i in range(0, len(mac_hex), num)
-        )
+        mac_str = self._add_separator_mac(mac_hex)
         return f"{mac_str}/{mask}" if mask else mac_str
+
+
+    def _convert_mac_str_to_wild(self, mac_str):
+        if '/' in mac_str:
+            mac, mask = mac_str.split('/')
+        else:
+            mac = mac_str
+            mask = 48
+        str_mac = self._strip_mac(mac)
+        int_mask = int(int(mask) / 4)
+        if len(str_mac) == int_mask:
+            return mac
+        else:
+            no_zeros_mac = str_mac[:-int_mask]
+            stars = ['*' for i in range(int_mask)]
+            stars_mac = f"{no_zeros_mac}{''.join(stars)}"
+            mac_star = self._add_separator_mac(stars_mac)
+            return mac_star.replace('**', '*')
+
+
+    def _add_separator_mac(self, mac_str):
+        return self.separator.join(
+            mac_str[i:i+self._num] for i in range(0, len(mac_str), self._num)
+        )
 
 
     # Strips the MAC address of '-', ':', and '.' characters
@@ -343,22 +387,41 @@ class MacParser(object):
 def main(*input_args):
     """Simple command line wrapping for MacParser."""
     argparser = argparse.ArgumentParser(description="Parser utility for Wireshark's OUI database.")
-    argparser.add_argument('-m', "--manuf",
-                           help="manuf file path. Defaults to manuf file packaged with manuf.py installation",
+    argparser.add_argument('-f', "--file",
+                           help="File path to manuf. Defaults to manuf file packaged with manuf.py installation",
                            action="store",
                            default=None)
-
     argparser.add_argument("-u", "--update",
                            help="update manuf file from the internet",
                            action="store_true")
-    argparser.add_argument("mac_address", nargs='?', help="MAC address to check")
+    argparser.add_argument("-m", "--mac",
+                           help="Specifies a MAC address will follow",
+                           action="store_true")
+    argparser.add_argument("-n", "--name",
+                           help="Specifies a manufacturer name will follow",
+                           action="store_true")
+    argparser.add_argument("item", nargs='?', help="MAC or Name to search for")
+    argparser.add_argument("--no-wildcards",
+                           dest="use_wildcards",
+                           help="Return wildcard formatted MACs",
+                           action="store_false")
 
     input_args = input_args or None  # if main is called with explicit args parse these - else use sysargs
     args = argparser.parse_args(args=input_args)
-    parser = MacParser(manuf_name=args.manuf, update=args.update)
+    parser = MacParser(manuf_name=args.file, update=args.update)
 
-    if args.mac_address:
-        print(parser.get_all(args.mac_address))
+    if args.mac:
+        print(parser.get_all(args.item))
+    elif args.name:
+        macs = parser.get_company_macs(args.item, args.use_wildcards)
+        print(f"Found {len(macs)} macs for {args.item}")
+        if len(macs) == 1:
+            print(macs[0])
+        elif len(macs) > 1:
+            for mac in macs:
+                print(mac)
+        else:
+            print(f"Found NO macs for {args.item}")
 
     sys.exit(0)
 

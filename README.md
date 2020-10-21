@@ -1,13 +1,15 @@
-manuf
-===
+macfinder
+=========
 
-[![Build Status](https://github.com/coolbho3k/manuf/workflows/test/badge.svg)](https://github.com/coolbho3k/manuf/actions)
-[![Build Status](https://badge.fury.io/py/manuf.svg)](https://pypi.org/project/manuf/)
+Parser library for Wireshark's OUI database
+-------------------------------------------
 
-Parser library for Wireshark's OUI database.
----
+This is a slightly modified version of **manuf** to add reverse lookup.  The
+capability to collect a list of MACs from a manufacturer name using the --name
+commandline switch or --mac to use the regular search.
 
-Converts MAC addresses into a manufacturer using Wireshark's OUI database.
+Converts MAC addresses into a manufacturer name and the reverse manufacturer
+name to list of MACs using Wireshark's OUI database.
 
 Optimized for quick lookup performance by reading the entire file into memory
 on initialization. Maps ranges of MAC addresses to manufacturers and comments
@@ -19,27 +21,42 @@ See [Wireshark's OUI lookup tool](https://www.wireshark.org/tools/oui-lookup.htm
 Written by Michael Huang (coolbho3k).
 
 Install
----
+-------
 
-#### With PyPi
+#### Manually
 
-    pip install manuf
+  ```bash
+  $ git clone https://github.com/IE-OnDemand/macfinder
+  $ cd macfinder
+  ```
 
-#### Or Manually
+  # You can use this without installing.
+  ```bash
+  $ ./src/macfinder --name 'HP'
+  ./src/macfinder.py # From the install folder
+  ```
 
-    git clone https://github.com/coolbho3k/manuf
-    cd manuf
-    python setup.py install
+  # The install places the macfinder command in your path.
+  ```bash
+  $ python setup.py install
+  $ macfinder --name 'HP'
+  ```
 
 Usage
----
+-----
+
+#### Run simple script to read bad_companies.txt and write results to results.txt
+
+  ```bash
+  $ ./get_bad_macs.sh
+  ```
 
 #### As a library:
 
-    >>> from manuf import manuf
-    >>> p = manuf.MacParser(update=True)
+    >>> from macfinder import macfinder
+    >>> p = macfinder.MacParser(update=True)
     >>> p.get_all('BC:EE:7B:00:00:00')
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.')
+    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
     >>> p.get_manuf('BC:EE:7B:00:00:00')
     'AsustekC'
     >>> p.get_comment('BC:EE:7B:00:00:00')
@@ -47,40 +64,40 @@ Usage
 
 #### As a command line:
 
-    $ manuf BC:EE:7B:00:00:00
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.')
-    
+    $ macfinder BC:EE:7B:00:00:00
+    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
+
 Use a manuf file in a custom location:
 
-    $ manuf --manuf ~/manuf BC:EE:7B:00:00:00
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.')
+    $ macfinder --file ~/manuf BC:EE:7B:00:00:00
+    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
 Automatically update the manuf file from Wireshark's git:
 
-    $ manuf --update BC:EE:7B:00:00:00
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.')
+    $ macfinder --update BC:EE:7B:00:00:00
+    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
 Note, that this command will update the manuf file bundled with this package. If you do not wish to 
 modify this, or do not have permissions to do so, you must specify a custom manuf file to perform an update.
 
-    $ manuf --update --manuf ~/manuf BC:EE:7B:00:00:00
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.')
+    $ macfinder --update --file ~/manuf BC:EE:7B:00:00:00
+    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
 Alternatively you can call the program with:
 
-    python -m manuf
-or by executing the `manuf.py` script directly
+    python -m macfinder
+or by executing the `macfinder.py` script directly
 
 ```bash
-./manuf/manuf.py # From the install folder
+./src/macfinder.py # From the install folder
 ```
 
-Features and advantages of manuf
+Features and advantages of macfinder
 ---
 
-Note: the examples use the manuf file provided in the first commit, 9a180b5.
+Note: the examples use the macfinder file provided in the first commit, 9a180b5.
 
-manuf.py is more accurate than more naive scripts that parse the manuf file.
+macfinder.py is more accurate than more naive scripts that parse the manuf file.
 Critically, it contains support for netmasks.
 
 For a usual entry, such as BC:EE:7B (AsustekC), the manufacturer "owns" the
@@ -98,7 +115,7 @@ are 48 bits long, and 48 bits - 36 bits = 12 bits).
 
 This means that Converging Systems is only free to assign the addresss block
 00:1B:C5:00:00:00 through 00:1B:C5:00:0F:FF. Anything after that belongs to
-other manufacturers. manuf.py takes this fact into account:
+other manufacturers. macfinder.py takes this fact into account:
 
     >>> p.get_manuf('00:1B:C5:00:00:00')
     'Convergi'
@@ -113,7 +130,7 @@ Systems Inc." If a netmask is not explicitly specified, a netmask of /24 is
 implied. Since this covers most of the entries, most tools only parse the first
 24 bits.
 
-manuf.py fully supports even more esoteric entries in the database. For example,
+macfinder.py fully supports even more esoteric entries in the database. For example,
 consider these two entries:
 
     01-80-C2-00-00-30/45	OAM-Multicast-DA-Class-1
@@ -144,7 +161,7 @@ returning no results.
 Algorithm
 ---
 
-Although optimized for correctness, manuf.py is also quite fast, with average
+Although optimized for correctness, macfinder.py is also quite fast, with average
 O(1) lookup time, O(n) setup time, and O(n) memory footprint.
 
 First, the entire manuf file is read into memory. Each manuf line is stored in
@@ -190,9 +207,5 @@ The database there is updated about once a week, so you may want to grab the
 latest version to use instead of using the one provided here by using the
 --update flag on the command line:
 
-    manuf --update
+    macfinder --update
 
-Run tests
----
-
-    python -m unittest manuf.test.test_manuf
