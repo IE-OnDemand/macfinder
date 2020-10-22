@@ -13,12 +13,14 @@ name to list of MACs using Wireshark's OUI database.
 
 Optimized for quick lookup performance by reading the entire file into memory
 on initialization. Maps ranges of MAC addresses to manufacturers and comments
-(descriptions). Contains full support for netmasks and other strange things in
-the database.
+(descriptions). Maps manufacturer names to a list or string formatted MAC/mask
+(d5:f2:88:00:00:00/24) or MAC wildcards (d5:f2:88:*:*:*). Contains full support
+for netmasks and other strange things in the database.
 
 See [Wireshark's OUI lookup tool](https://www.wireshark.org/tools/oui-lookup.html).
 
-Written by Michael Huang (coolbho3k).
+Original version written by Michael Huang (coolbho3k).
+Modified by Ricky Laney (rlaneyjr).
 
 Install
 -------
@@ -30,10 +32,9 @@ Install
   $ cd macfinder
   ```
 
-  # You can use this without installing.
+  # You can use this without installing. Example from the install folder.
   ```bash
   $ ./src/macfinder --name 'HP'
-  ./src/macfinder.py # From the install folder
   ```
 
   # The install places the macfinder command in your path.
@@ -45,7 +46,7 @@ Install
 Usage
 -----
 
-#### Run simple script to read bad_companies.txt and write results to results.txt
+#### Run simple script to read bad_companies.txt and write output to results.txt
 
   ```bash
   $ ./get_bad_macs.sh
@@ -61,27 +62,44 @@ Usage
     'AsustekC'
     >>> p.get_comment('BC:EE:7B:00:00:00')
     'ASUSTek COMPUTER INC.'
+    >>> p.get_company_mac('ASUSTek')
+    'BC:EE:7B:*:*:*'
+    'BC:3E:7C:*:*:*'
+    'BC:E1:4D:*:*:*'
+    'BC:6E:8B:*:*:*'
+    ...
+    >>> p.get_company_mac('ASUSTek', use_wildcards=False)
+    'BC:EE:7B:00:00:00/24'
+    'BC:3E:7C:00:00:00/24'
+    'BC:E1:4D:00:00:00/24'
+    'BC:6E:8B:00:00:00/24'
+    ...
 
 #### As a command line:
 
-    $ macfinder BC:EE:7B:00:00:00
+    $ macfinder --mac BC:EE:7B:00:00:00
     Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
 Use a manuf file in a custom location:
 
-    $ macfinder --file ~/manuf BC:EE:7B:00:00:00
+    $ macfinder --file ~/manuf --mac BC:EE:7B:00:00:00
     Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
 Automatically update the manuf file from Wireshark's git:
 
-    $ macfinder --update BC:EE:7B:00:00:00
+    $ macfinder --update --mac BC:EE:7B:00:00:00
     Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
 
-Note, that this command will update the manuf file bundled with this package. If you do not wish to 
-modify this, or do not have permissions to do so, you must specify a custom manuf file to perform an update.
+Note, that this command will update the manuf file bundled with this package.
+If you do not wish to modify this, or do not have permissions to do so, you must
+specify a custom manuf file to perform an update.
 
-    $ macfinder --update --file ~/manuf BC:EE:7B:00:00:00
-    Vendor(manuf='AsustekC', comment='ASUSTek COMPUTER INC.', mac='BC:EE:7B:00:00:00/24')
+    $ macfinder --update --file ~/manuf --name ASUSTek --no-wildcards 
+    'BC:EE:7B:00:00:00/24'
+    'BC:3E:7C:00:00:00/24'
+    'BC:E1:4D:00:00:00/24'
+    'BC:6E:8B:00:00:00/24'
+    ...
 
 Alternatively you can call the program with:
 
